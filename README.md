@@ -1,4 +1,6 @@
-This script was made to be used in the Tampermonkey browser extention. Install script: [userscript](https://github.com/shiina-tsu/WikiMasters-QoL/raw/main/master.user.js)
+This script was made to be used in the Tampermonkey browser extention. 
+Install [tampermonkey](https://www.tampermonkey.net/)
+Install [userscript](https://github.com/shiina-tsu/WikiMasters-QoL/raw/main/master.user.js)
 
 Quality of life script for wiki-masters.com, made in a unoptimized, overcomplicated and unprofessional way, because I sucks. :(
 
