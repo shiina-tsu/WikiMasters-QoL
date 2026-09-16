@@ -1,20 +1,20 @@
 // ==UserScript==
 // @name         WikiMasters QoL
 // @namespace    http://tampermonkey.net/
-// @version      0.1.0
-// @description  Various things
+// @version      0.1.1-dev
+// @description  Enhance wiki-masters experience with quality of life features.
 // @updateURL    https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @downloadURL  https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @author       https://github.com/shiina-tsu
 // @match        *://*.wiki-masters.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=wiki-masters.com
-// @run-at document-start
+// @run-at document-end
 // @grant        none
 // ==/UserScript==
 
 function runPageLogic() {
 
-    function init()
+    (function () 
     {
       if(localStorage.getItem("ShowAll") === null) {
         localStorage.setItem("ShowAll", false);
@@ -22,34 +22,51 @@ function runPageLogic() {
       if(localStorage.getItem("previousPrices") === null) {
         localStorage.setItem("previousPrices", JSON.stringify({}))
       }
+    })();
+
+    const original_Fetch_Function = window.fetch;
+    const card_Summary_URL = "https://www.wiki-masters.com/api/marketplace/cards/<CARD_ID_>/sales?scope=summary"
+    const cards_Personal_Collection_URL = "https://www.wiki-masters.com/api/my-collection?sort=rarity&page=<PAGE_>&stats=0"
+    const supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5cnhqZXBwanFzeHhqYXlmcnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4ODAzMzksImV4cCI6MjA4OTQ1NjMzOX0.BZluyXygNxuQGDPxFX1zG5i-cqp10CVK-8GGtuak4Rg"
+    // supabaseApiKey is not a personal token, same token is used my every user.
+    const myself = myGetData() //JSON: id, bearer
+
+    let cards_Personal_Collection_Count;
+
+    function myGetData()
+    {
+      const authTokenBs64p1 = document.cookie.split("sb-cyrxjeppjqsxxjayfrur-auth-token.0=")[1]
+                                         .split(";")[0].replace("base64-", "").trim();
+      const authTokenBs64p2 = document.cookie.split("sb-cyrxjeppjqsxxjayfrur-auth-token.1=")[1]
+                                         .split(";")[0].trim();
+      let authTokenBs64 = authTokenBs64p1 + authTokenBs64p2
+      while (authTokenBs64.length % 4) {
+        authTokenBs64 += '=';
+      }
+      const decodedData = JSON.parse(atob(authTokenBs64));
+      return {"id": decodedData.user.id, "bearer": decodedData.access_token}
     }
-    init();
 
-    // const GetMarketApi = "https://www.wiki-masters.com/api/marketplace?page=1&limit=1&sort=ending_soon&mine=1";
-    // const MarketHistoryID = "marketplace-auction-";
-    const originalFetch = window.fetch;
-    const AveragePrice = "https://www.wiki-masters.com/api/marketplace/cards/<CARD_ID>/sales?scope=summary"
-    const Get_Collection = "https://www.wiki-masters.com/api/my-collection?sort=rarity&page=<PAGE_>&stats=0"
-
-    let CardsCollectionNumbers;
-
-    async function getData(url) {
+    async function requestFetch(request) 
+    {
       try {
-        const response = await fetch(url);
+        const response = await original_Fetch_Function(request);
+        if (!response.ok) {
+          throw new Error(`Response Status : ${reponse.status}`);
+        }
         const data = await response.json();
         return data;
-
       } catch (error) {
-        console.log(error);
-        return undefined;
+        throw new Error(`${error}`);
       }
     }
 
-    function waitForElements(check, timeout = 10000) { // function made with help of AI
+    function waitForElements(check, timeout = 10000)
+    {  /* function made with help of AI */
       return new Promise((resolve, reject) => {
         function isFound(result) {
           if (!result) return false;
-          if ('length' in result) return result.length > 0;
+          if ('length' in result) return result.length > 0; // Works with multiple element 
           return true;
         }
 
@@ -82,15 +99,17 @@ function runPageLogic() {
     //   );
     // }
 
-    async function getPrice(cards){
+    async function getPrice(cards)
+    {
       const els = Array.from(
         await waitForElements(
           () => document.querySelectorAll('div[class="absolute top-[45%] left-0 right-0 bottom-0 flex min-h-0 flex-col p-3 z-20"]')
           )
         )
       let previousPrices = JSON.parse(localStorage.getItem("previousPrices"));
+      let prices = []
 
-      async function findCardElement(title, desc)
+      function findCardElement(title, desc)
       {
         for(const el of els){
             if (!el.classList.contains("injected") 
@@ -102,7 +121,20 @@ function runPageLogic() {
         }
         return undefined
       }
-      async function exec(card)
+      function insert()
+      {
+        prices.forEach((card) => {
+          const {title, desc, price} = card;
+          const el = findCardElement(title, desc);
+          if (!el) return;
+
+          waitForElements(() => el.querySelector("div").firstElementChild.firstElementChild).then((div) => {
+            div.insertAdjacentHTML("afterend", `<div class="text-[10px] flex items-center justify-center gap-1 "><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 1 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M7.5 8.5 9.5 15.5 12 10 14.5 15.5 16.5 8.5"></path></svg><span class="font-bold text-black/90">${price}</span></div>`);
+          })
+          el.classList.add("injected");
+        })
+      }
+      async function price(card)
       {
         const time = new Date().getTime();
         const title = card.card.wikipedia_title
@@ -110,38 +142,31 @@ function runPageLogic() {
         const desc = card.card.category
         let price;
 
-        const el = await findCardElement(title, desc);
-        if (!el) return;
-
         if((time - previousPrices[card.card_id]?.lastChecked) / (86400000) < 1) {
           price = previousPrices[card.card_id].price
         }
         else {
-          const priceData = await getData(AveragePrice.replace("<CARD_ID>", card.card_id));
+          const priceData = await requestFetch(card_Summary_URL.replace("<CARD_ID_>", card.card_id));
           price = priceData.summary[rarity]?.average
 
           if(!price) price = "?";
            
           previousPrices[card.card_id] = {price: price, lastChecked: time};
         }
-
-        waitForElements(() => el.querySelector("div").firstElementChild.firstElementChild).then((div) => {
-          div.insertAdjacentHTML("afterend", `<div class="text-[10px] flex items-center justify-center gap-1 "><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 1 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M7.5 8.5 9.5 15.5 12 10 14.5 15.5 16.5 8.5"></path></svg><span class="font-bold text-black/90">${price}</span></div>`);
-          el.classList.add("injected");
-        })
+        prices.push({"title": title, "desc": desc, "price": price})
       }
 
       (async () => 
       {
-        await Promise.all(cards.map((card) => exec(card)));
+        await Promise.all(cards.map((card) => price(card)));
         localStorage.setItem("previousPrices", JSON.stringify(previousPrices));
+        insert()
       })();
 
     };
 
     async function setupTrades(trades)
     {
-      let ownID = document.body.textContent.includes(trades[0].initiator_id) ? trades[0].initiator_id : trades[0].recipient_id
       let received = []
       let sent = []
       const els = await waitForElements(() => document.querySelector('div[class="space-y-3 animate-fade-in-up"]'))
@@ -150,7 +175,7 @@ function runPageLogic() {
       {
         if(trades[i].status == "pending")
         {
-          if(trades[i].initiator_id != ownID) received.push(i)
+          if(trades[i].initiator_id != myself.id) received.push(i)
           else sent.push(i)
         }
       }
@@ -180,10 +205,9 @@ function runPageLogic() {
 
         const url = typeof resource === 'string' ? resource : resource.url;
 
-        //console.log('Request sent:', resource, config);
 
         // Real fetch
-        const response = await originalFetch.apply(this, args);
+        const response = await original_Fetch_Function.apply(this, args);
 
         // Leave original untouched
         const clone = response.clone();
@@ -217,7 +241,7 @@ function runPageLogic() {
                 let lastResp = modifiedData
                 let page = 1
                 while (lastResp.collection.length != 0) {
-                  lastResp = await getData(Get_Collection.replace("?sort", "?ShowAll=true&sort").replace("<PAGE_>", page.toString()))
+                  lastResp = await requestFetch(cards_Personal_Collection_URL.replace("?sort", "?ShowAll=true&sort").replace("<PAGE_>", page.toString()))
                   modifiedData.collection.push(...lastResp.collection)
                   page += 1
                 }
@@ -232,8 +256,9 @@ function runPageLogic() {
     };
 
     async function auctionAddProfile()
-    {
+    { /* During auction clicking on bider/seller name redirect to their profile. */
       const spanClasses = ["text-[var(--color-foreground)]/80", "text-[var(--color-accent)] font-medium", "text-[var(--color-foreground)]/80 font-medium"]
+      // spanClasses = biders, seller, leader
       spanClasses.forEach((spanClass) => {
         waitForElements(() => document.querySelectorAll('span[class="'+spanClass+'"]')).then( (els) => {
           els.forEach((el) => { // el is span with name of the user for innerHTML
@@ -248,7 +273,7 @@ function runPageLogic() {
     }
 
     if (window.location.pathname.startsWith("/marketplace/")) 
-    { // During card auction you can click on name and get people profile.
+    {
         auctionAddProfile()
     } 
     else if (window.location.pathname === '/collection') 
@@ -282,9 +307,11 @@ function runPageLogic() {
    };
 }
 
-(function () { // AI
+(function () {
   'use strict';
-
+  /*  Function By AI, this function is needed because the site works differently,
+      making path change not actually rerunning the script nor updating window.location. */
+  
   let lastPath = location.pathname;
 
   function onRouteChange() {
