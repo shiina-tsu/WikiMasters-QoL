@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WikiMasters QoL
 // @namespace    http://tampermonkey.net/
-// @version      2026-09-05
+// @version      0.1.0
 // @description  Various things
 // @updateURL    https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @downloadURL  https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
