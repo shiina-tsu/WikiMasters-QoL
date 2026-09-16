@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WikiMasters QoL
 // @namespace    http://tampermonkey.net/
-// @version      0.1.1-dev
+// @version      0.1.1
 // @description  Enhance wiki-masters experience with quality of life features.
 // @updateURL    https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @downloadURL  https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
