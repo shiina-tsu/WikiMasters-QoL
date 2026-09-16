@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WikiMasters QoL
 // @namespace    http://tampermonkey.net/
-// @version      0.1.1
+// @version      0.1.2
 // @description  Enhance wiki-masters experience with quality of life features.
 // @updateURL    https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @downloadURL  https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
@@ -128,7 +128,8 @@ function runPageLogic() {
           const el = findCardElement(title, desc);
           if (!el) return;
 
-          waitForElements(() => el.querySelector("div").firstElementChild.firstElementChild).then((div) => {
+          waitForElements(() => el.querySelector('div[class="flex w-full shrink-0 items-center justify-between border-t border-black/20 pt-1 py-1 justify-between"]').firstElementChild)
+          .then((div) => {
             div.insertAdjacentHTML("afterend", `<div class="text-[10px] flex items-center justify-center gap-1 "><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 1 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M7.5 8.5 9.5 15.5 12 10 14.5 15.5 16.5 8.5"></path></svg><span class="font-bold text-black/90">${price}</span></div>`);
           })
           el.classList.add("injected");
@@ -310,7 +311,7 @@ function runPageLogic() {
 (function () {
   'use strict';
   /*  Function By AI, this function is needed because the site works differently,
-      making path change not actually rerunning the script nor updating window.location. */
+      making path change not actually rerunning the script */
   
   let lastPath = location.pathname;
 
