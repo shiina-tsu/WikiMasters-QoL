@@ -52,7 +52,7 @@ function runPageLogic() {
       try {
         const response = await original_Fetch_Function(request);
         if (!response.ok) {
-          throw new Error(`Response Status : ${reponse.status}`);
+          throw new Error(`Response Status : ${response.status}`);
         }
         const data = await response.json();
         return data;
@@ -130,7 +130,7 @@ function runPageLogic() {
 
           waitForElements(() => el.querySelector('div[class="flex w-full shrink-0 items-center justify-between border-t border-black/20 pt-1 py-1 justify-between"]').firstElementChild)
           .then((div) => {
-            div.insertAdjacentHTML("afterend", `<div class="text-[10px] flex items-center justify-center gap-1 "><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 1 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M7.5 8.5 9.5 15.5 12 10 14.5 15.5 16.5 8.5"></path></svg><span class="font-bold text-black/90">${price}</span></div>`);
+            div.insertAdjacentHTML("afterend", `<div class="text-[10px] flex items-center justify-center gap-1 "><svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 1 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M7.5 8.5 9.5 15.5 12 10 14.5 15.5 16.5 8.5"></path></svg><span class="font-bold text-black/90">${price}</span></div>`);
           })
           el.classList.add("injected");
         })
@@ -277,7 +277,7 @@ function runPageLogic() {
     {
         auctionAddProfile()
     } 
-    else if (window.location.pathname === '/collection') 
+    else if (window.location.pathname === '/collection')
     {
         waitForElements(
           () => document.querySelectorAll('div[class="flex items-center justify-center gap-2 py-3"]'),
