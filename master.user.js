@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         WikiMasters QoL
 // @namespace    http://tampermonkey.net/
-// @version      0.1.2
+// @version      0.2.0
 // @description  Enhance wiki-masters experience with quality of life features.
 // @updateURL    https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @downloadURL  https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
 // @author       https://github.com/shiina-tsu
 // @match        *://*.wiki-masters.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=wiki-masters.com
-// @run-at document-end
+// @run-at document-start
 // @grant        none
 // ==/UserScript==
 
@@ -16,19 +16,18 @@ function runPageLogic() {
 
     (function () 
     {
-      if(localStorage.getItem("ShowAll") === null) {
-        localStorage.setItem("ShowAll", false);
-      }
+      // if(localStorage.getItem("ShowAll") === null) {
+      //   localStorage.setItem("ShowAll", false);
+      // }
       if(localStorage.getItem("previousPrices") === null) {
         localStorage.setItem("previousPrices", JSON.stringify({}))
       }
     })();
 
-    const original_Fetch_Function = window.fetch;
     const card_Summary_URL = "https://www.wiki-masters.com/api/marketplace/cards/<CARD_ID_>/sales?scope=summary"
     const cards_Personal_Collection_URL = "https://www.wiki-masters.com/api/my-collection?sort=rarity&page=<PAGE_>&stats=0"
     const supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5cnhqZXBwanFzeHhqYXlmcnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4ODAzMzksImV4cCI6MjA4OTQ1NjMzOX0.BZluyXygNxuQGDPxFX1zG5i-cqp10CVK-8GGtuak4Rg"
-    // supabaseApiKey is not a personal token, same token is used my every user.
+    // supabaseApiKey is not a personal token, same token is used by every user.
     const myself = myGetData() //JSON: id, bearer
 
     let cards_Personal_Collection_Count;
@@ -47,21 +46,11 @@ function runPageLogic() {
       return {"id": decodedData.user.id, "bearer": decodedData.access_token}
     }
 
-    async function requestFetch(request) 
-    {
-      try {
-        const response = await original_Fetch_Function(request);
-        if (!response.ok) {
-          throw new Error(`Response Status : ${response.status}`);
-        }
-        const data = await response.json();
-        return data;
-      } catch (error) {
-        throw new Error(`${error}`);
-      }
+    function delay(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
-    function waitForElements(check, timeout = 10000)
+    function waitForElements(check, timeout = 10000, mode = "appear")
     {  /* function made with help of AI */
       return new Promise((resolve, reject) => {
         function isFound(result) {
@@ -70,26 +59,32 @@ function runPageLogic() {
           return true;
         }
 
-        const existing = check();
-        if (isFound(existing)) {
-          resolve(existing);
+        function conditionMet() {
+          const result = check();
+          return mode === "appear" ? isFound(result) : !isFound(result);
+        }
+
+        if (conditionMet()) {
+          resolve(check());
           return;
         }
 
         const observer = new MutationObserver(() => {
-          const el = check();
-          if (isFound(el)) {
+          if (conditionMet()) {
             observer.disconnect();
-            resolve(el);
+            resolve(check());
           }
         });
 
         observer.observe(document.body, { childList: true, subtree: true });
 
-        setTimeout(() => {
-          observer.disconnect();
-          reject(new Error("Timed out waiting for element"));
-        }, timeout);
+        if(timeout != Infinity)
+        {
+          setTimeout(() => {
+            observer.disconnect();
+            reject(new Error("Timed out waiting for element"));
+          }, timeout);
+        }
       });
     }
 
@@ -103,7 +98,7 @@ function runPageLogic() {
     {
       const els = Array.from(
         await waitForElements(
-          () => document.querySelectorAll('div[class="absolute top-[45%] left-0 right-0 bottom-0 flex min-h-0 flex-col p-3 z-20"]')
+          () => document.querySelectorAll('div[class="absolute top-[45%] left-0 right-0 bottom-0 flex min-h-0 flex-col p-3 z-20 "]')
           )
         )
       let previousPrices = JSON.parse(localStorage.getItem("previousPrices"));
@@ -147,12 +142,20 @@ function runPageLogic() {
           price = previousPrices[card.card_id].price
         }
         else {
-          const priceData = await requestFetch(card_Summary_URL.replace("<CARD_ID_>", card.card_id));
-          price = priceData.summary[rarity]?.average
-
-          if(!price) price = "?";
-           
-          previousPrices[card.card_id] = {price: price, lastChecked: time};
+          const response = await window.fetch(card_Summary_URL.replace("<CARD_ID_>", card.card_id));
+          if(response.ok)
+          {
+            const priceData = await response.json()
+            if(rarity in priceData.summary)
+            {
+              price = priceData.summary[rarity]?.average
+            } else {
+              price = "?"
+            }
+            previousPrices[card.card_id] = {price: price, lastChecked: time};
+          } else {
+            price = "?"
+          }
         }
         prices.push({"title": title, "desc": desc, "price": price})
       }
@@ -191,70 +194,27 @@ function runPageLogic() {
       }
     };
 
-    window.fetch = async function (...args) {
-        function forwardResp(response, modifiedData)
-        {
-            // Build a new Response object to return instead
-            return new Response(JSON.stringify(modifiedData), {
-                status: response.status,
-                statusText: response.statusText,
-                headers: response.headers,
-            });
-        }
+    function fetchIntercept(check) {
+      return new Promise((resolve, reject) => {
+        const originalFetch = window.fetch;
 
-        const [resource, config] = args;
+        window.fetch = async function (...args) {
+          const [resource, config] = args;
+          const url = typeof resource === 'string' ? resource : resource.url;
 
-        const url = typeof resource === 'string' ? resource : resource.url;
+          const response = await originalFetch.apply(this, args);
 
+          if (url.includes(check)) {
+            const clone = response.clone();
+            const data = await clone.json();
 
-        // Real fetch
-        const response = await original_Fetch_Function.apply(this, args);
-
-        // Leave original untouched
-        const clone = response.clone();
-        const data = await clone.json(); // or .text()
-
-        // Modify the data
-        const modifiedData = { ...data };
-
-        if (url.includes("/api/marketplace?page=")){
-            getPrice(modifiedData.auctions);
-        } 
-        else if (url.includes("/collection?page="))
-        {
-          getPrice(modifiedData.collection)
-        } 
-        // else if (url.includes("/cards?page=") && document.location.pathname === "/global-collection")
-        // {
-        //   getPrice(modifiedData.cards)
-        // }
-        else if (url == "/api/trades")
-        {
-          setupTrades(modifiedData.trades)
-        }
-        else if (url.includes("/api/my-collection?sort=") 
-          && (window.location.pathname.includes("/collection") 
-            || window.location.pathname.includes("/marketplace") 
-            || window.location.pathname.includes("/trades"))
-          )
-        {
-            if(localStorage.getItem("ShowAll") == "true"){
-                let lastResp = modifiedData
-                let page = 1
-                while (lastResp.collection.length != 0) {
-                  lastResp = await requestFetch(cards_Personal_Collection_URL.replace("?sort", "?ShowAll=true&sort").replace("<PAGE_>", page.toString()))
-                  modifiedData.collection.push(...lastResp.collection)
-                  page += 1
-                }
-                CardsCollectionNumbers = modifiedData.collection.length;
-                return forwardResp(response, modifiedData)
-              };
-
-            getPrice(modifiedData.collection);
+            window.fetch = originalFetch; 
+            resolve(data);
+          }
+          return response;
         };
-
-        return response;
-    };
+      });
+    }
 
     async function auctionAddProfile()
     { /* During auction clicking on bider/seller name redirect to their profile. */
@@ -273,39 +233,104 @@ function runPageLogic() {
       })
     }
 
+    async function tradeShowPricesCollection()
+    {
+      // while (true) {
+      //   const data = await fetchIntercept("collection?");
+      //   const section = await waitForElements(() => document.querySelector('div[class="relative min-h-[200px]"]'), Infinity)
+      //   section.classList.add("injected")
+      //   console.log(data)
+      //   getPrice(data.collection);
+      //   await delay(500);
+      // }
+    }
+
+    async function auctionsShowPrices()
+    {
+      async function sectionChanged()
+      { //If going into another section like "My auctions", we need to redo the process of showing prices.
+        const el = 'button[class="px-5 py-2.5 rounded-xl bg-[var(--color-accent)] text-[var(--color-accent-foreground)] text-sm font-semibold hover:bg-[var(--color-accent-light)] transition-colors cursor-pointer disabled:opacity-50"]'
+        while(true) {
+          await waitForElements(() => document.querySelector(el), Infinity) // Browsing auctions
+          getPrice(previous)
+          await waitForElements(() => document.querySelector(el), Infinity, "disappear") // Not Browsing auctions
+          await delay(500);
+        }
+      }
+      let previous = []
+      sectionChanged()
+
+      while (true) {
+        const data = await fetchIntercept("/api/marketplace?");
+        previous.push(...data.auctions)
+        getPrice(data.auctions);
+        await delay(500);
+      }
+    }
+
+    async function profileShowPricesCollection()
+    {
+      // const section = await waitForElements(() => document.querySelector('div[class="flex flex-wrap justify-center gap-3 sm:gap-[22px] md:gap-[26px]"]'), Infinity
+      // if(section)
+      // {
+      //   getPrice(collection);
+      // }
+    }
+
+    async function collectionShowPrices()
+    {
+      while (true) {
+        const data = await fetchIntercept("/api/my-collection?");
+        getPrice(data.collection);
+        await delay(500);
+      }
+    }
+
     if (window.location.pathname.startsWith("/marketplace/")) 
     {
         auctionAddProfile()
     } 
-    else if (window.location.pathname === '/collection')
+    else if (window.location.pathname === "/trades")
     {
-        waitForElements(
-          () => document.querySelectorAll('div[class="flex items-center justify-center gap-2 py-3"]'),
-          9999999
-          ).then(
-          (els) => {
-            els.forEach((el) => {
-              el.firstElementChild.insertAdjacentHTML("beforebegin", '<button type="button" class="ALL-injected px-4 py-2 rounded-lg bg-[var(--color-surface-light)] text-sm disabled:opacity-30 hover:bg-[var(--color-accent)]/10 transition-all cursor-pointer disabled:cursor-not-allowed">Show All</button>')
-              if(localStorage.getItem("ShowAll") == 'true'){
-                el.querySelector(".ALL-injected").style.color = "green";
-                let btns = el.querySelectorAll("button:not(.ALL-injected)")
-                btns.forEach((btn) => btn.remove());
-                el.querySelector("span").innerHTML = CardsCollectionNumbers.toString() + " Cards";
-              }
-            })
-          });
+        tradeShowPricesCollection()
+    }
+    else if (window.location.pathname === "/marketplace")
+    {  
+        auctionsShowPrices()
+    }
+    else if (window.location.pathname === "/collection")
+    {
+        collectionShowPrices()
+    }
+    // else if (window.location.pathname === '/collection')
+    // {
+    //     waitForElements(
+    //       () => document.querySelectorAll('div[class="flex items-center justify-center gap-2 py-3"]'),
+    //       9999999
+    //       ).then(
+    //       (els) => {
+    //         els.forEach((el) => {
+    //           el.firstElementChild.insertAdjacentHTML("beforebegin", '<button type="button" class="ALL-injected px-4 py-2 rounded-lg bg-[var(--color-surface-light)] text-sm disabled:opacity-30 hover:bg-[var(--color-accent)]/10 transition-all cursor-pointer disabled:cursor-not-allowed">Show All</button>')
+    //           if(localStorage.getItem("ShowAll") == 'true'){
+    //             el.querySelector(".ALL-injected").style.color = "green";
+    //             let btns = el.querySelectorAll("button:not(.ALL-injected)")
+    //             btns.forEach((btn) => btn.remove());
+    //             el.querySelector("span").innerHTML = CardsCollectionNumbers.toString() + " Cards";
+    //           }
+    //         })
+    //       });
               
-      waitForElements(
-        () => document.querySelectorAll(".ALL-injected"),
-        9999999
-      ).then( 
-        (btns) => {
-          btns.forEach((btn) => btn.addEventListener('click', () => {
-            localStorage.setItem("ShowAll", localStorage.getItem("ShowAll") !== "true");
-            document.location = document.location;
-          }))
-        });
-   };
+    //   waitForElements(
+    //     () => document.querySelectorAll(".ALL-injected"),
+    //     9999999
+    //   ).then( 
+    //     (btns) => {
+    //       btns.forEach((btn) => btn.addEventListener('click', () => {
+    //         localStorage.setItem("ShowAll", localStorage.getItem("ShowAll") !== "true");
+    //         document.location = document.location;
+    //       }))
+    //     });
+   // };
 }
 
 (function () {
