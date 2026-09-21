@@ -1,10 +1,10 @@
 // ==UserScript==
-// @name         WikiMasters QoL
+// @name         Wiki-Masters QoL
 // @namespace    http://tampermonkey.net/
-// @version      0.2.0
+// @version      0.2.1
 // @description  Enhance wiki-masters experience with quality of life features.
-// @updateURL    https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
-// @downloadURL  https://github.com/shiina-tsu/WikiMasters-Qol/raw/main/master.user.js
+// @updateURL    https://github.com/shiina-tsu/Wiki-Masters-Qol/raw/main/master.user.js
+// @downloadURL  https://github.com/shiina-tsu/Wiki-Masters-Qol/raw/main/master.user.js
 // @author       https://github.com/shiina-tsu
 // @match        *://*.wiki-masters.com/*
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=wiki-masters.com
@@ -31,6 +31,14 @@ function runPageLogic() {
     const myself = myGetData() //JSON: id, bearer
 
     let cards_Personal_Collection_Count;
+
+    const rarityMap = {
+      "Commun": "C",
+      "Rare": "R",
+      "Super Rare": "SR",
+      "Ultra Rare": "UR",
+      "Légendaire": "L",
+      };
 
     function myGetData()
     {
@@ -93,7 +101,23 @@ function runPageLogic() {
     //     el.textContent.trim().startsWith(text)
     //   );
     // }
-
+    async function cardGetPrice(cardId, rarity)
+    {
+      const response = await window.fetch(card_Summary_URL.replace("<CARD_ID_>", cardId));
+      if(response.ok)
+      {
+        const priceData = await response.json()
+        if(rarity in priceData.summary)
+        {
+          price = priceData.summary[rarity]?.average
+        } else {
+          price = "?"
+        }
+      } else {
+        price = null
+      }
+      return price;
+    }
     async function getPrice(cards)
     {
       const els = Array.from(
@@ -142,19 +166,14 @@ function runPageLogic() {
           price = previousPrices[card.card_id].price
         }
         else {
-          const response = await window.fetch(card_Summary_URL.replace("<CARD_ID_>", card.card_id));
-          if(response.ok)
+          price = await cardGetPrice(card.card_id, rarity)
+          if(!price)
           {
-            const priceData = await response.json()
-            if(rarity in priceData.summary)
-            {
-              price = priceData.summary[rarity]?.average
-            } else {
-              price = "?"
-            }
-            previousPrices[card.card_id] = {price: price, lastChecked: time};
-          } else {
             price = "?"
+          }
+          else
+          {
+            previousPrices[card.card_id] = {price: price, lastChecked: time};
           }
         }
         prices.push({"title": title, "desc": desc, "price": price})
@@ -194,7 +213,7 @@ function runPageLogic() {
       }
     };
 
-    function fetchIntercept(check) {
+    function fetchIntercept(check, waitFor = "data") {
       return new Promise((resolve, reject) => {
         const originalFetch = window.fetch;
 
@@ -208,8 +227,9 @@ function runPageLogic() {
             const clone = response.clone();
             const data = await clone.json();
 
-            window.fetch = originalFetch; 
-            resolve(data);
+            window.fetch = originalFetch;
+            if(waitFor == "data") resolve(data);
+            else resolve(url);
           }
           return response;
         };
@@ -218,19 +238,22 @@ function runPageLogic() {
 
     async function auctionAddProfile()
     { /* During auction clicking on bider/seller name redirect to their profile. */
-      const spanClasses = ["text-[var(--color-foreground)]/80", "text-[var(--color-accent)] font-medium", "text-[var(--color-foreground)]/80 font-medium"]
-      // spanClasses = biders, seller, leader
-      spanClasses.forEach((spanClass) => {
-        waitForElements(() => document.querySelectorAll('span[class="'+spanClass+'"]')).then( (els) => {
-          els.forEach((el) => { // el is span with name of the user for innerHTML
-            const a = document.createElement('a')
-            a.href = "/profile/"+ encodeURI(el.innerHTML)
-            a.innerHTML = el.innerHTML
-            a.classList = el.classList
-            el.replaceWith(a)
+      while(true){
+        const spanClasses = ["text-[var(--color-foreground)]/80", "text-[var(--color-accent)] font-medium", "text-[var(--color-foreground)]/80 font-medium"]
+        // spanClasses = biders, seller, leader
+        spanClasses.forEach((spanClass) => {
+          waitForElements(() => document.querySelectorAll('span[class="'+spanClass+'"]'), Infinity).then( (els) => {
+            els.forEach((el) => { // el is span with name of the user for innerHTML
+              const a = document.createElement('a')
+              a.href = "/profile/"+ encodeURI(el.innerHTML)
+              a.innerHTML = el.innerHTML
+              a.classList = el.classList
+              el.replaceWith(a)
+            })
           })
         })
-      })
+        await delay(500);
+      }
     }
 
     async function tradeShowPricesCollection()
@@ -286,6 +309,27 @@ function runPageLogic() {
       }
     }
 
+    async function cardShowPrices()
+    { /* Clicking on a card to show info will execute the following code
+     And show the price on the big display of the card. */
+      while(true) {
+        const url = await fetchIntercept("/rest/v1/cards?select=summary", "url");
+        const cardId = new URL(url).searchParams.get("id").replace("eq.", "");
+        const rarityElement = await waitForElements(() => document.querySelector('span[class="inline-block px-2 py-0.5 rounded text-xs font-bold"]'))
+        const rarity = rarityMap[rarityElement.textContent]
+        const price = await cardGetPrice(cardId, rarity)
+        if(!price) price = "?"
+        const bigCard = await waitForElements(() => document.querySelector('div[class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"]'))
+        const el = await waitForElements(() => bigCard.querySelector('div[class="absolute top-[45%] left-0 right-0 bottom-0 flex min-h-0 flex-col p-3 z-20 "]'))
+        waitForElements(() => el.querySelector('div[class="flex w-full shrink-0 items-center justify-between border-t border-black/20 pt-1 py-1 justify-between"]').firstElementChild)
+            .then((div) => {
+              div.insertAdjacentHTML("afterend", `<div class="text-sm flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 1 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 shrink-0" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M7.5 8.5 9.5 15.5 12 10 14.5 15.5 16.5 8.5"></path></svg><span class="font-bold text-black/90">${price}</span></div>`);
+            })
+        el.classList.add("injected");
+        await delay(500);
+      }
+    }
+
     if (window.location.pathname.startsWith("/marketplace/")) 
     {
         auctionAddProfile()
@@ -301,6 +345,10 @@ function runPageLogic() {
     else if (window.location.pathname === "/collection")
     {
         collectionShowPrices()
+    }
+    else if (window.location.pathname === "/global-collection")
+    {
+        cardShowPrices()
     }
     // else if (window.location.pathname === '/collection')
     // {
